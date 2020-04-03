@@ -12,11 +12,10 @@ const TOKEN_PATH = 'token.json';
 
 async function main() {
   const auth = await authenticate();
-  const tasks = await getTasks(auth);
+  const tasks = await getTasks(auth, TASKLIST_ID);
+
   const csv = await toCSVString(tasks);
-
   const filename = path.join('data', `tasks_${new Date().toISOString()}.csv`);
-
   toFile(filename, csv);
 }
 
@@ -97,11 +96,11 @@ async function getTaskLists(auth) {
   })
 }
 
-async function getTasks(auth, limit = 100) {
+async function getTasks(auth, tasklistId, limit = 100) {
   return new Promise((resolve, reject) => {
     const service = google.tasks({version: 'v1', auth});
     service.tasks.list({
-      tasklist: TASKLIST_ID,
+      tasklist: tasklistId,
       maxResults: limit
     }, (err, res) => {
       if (err) {
@@ -110,8 +109,27 @@ async function getTasks(auth, limit = 100) {
         return;
       }
 
-      const tasks = res.data.items;
-      resolve(tasks || []);
+      const tasks = res.data.items || [];
+      resolve(handleTasksResponse(tasks));
+    })
+  })
+}
+
+async function getTask(auth, tasklistId, taskId) {
+  return new Promise((resolve, reject) => {
+    const service = google.tasks({version: 'v1', auth});
+    service.tasks.get({
+      tasklist: tasklistId,
+      task: taskId
+    }, (err, res) => {
+      if (err) {
+        console.error('The API returned an error: ' + err);
+        reject(err);
+        return;
+      }
+
+      const task = res.data;
+      resolve(handleTaskResponse(task));
     })
   })
 }
@@ -128,3 +146,24 @@ const toFile = (filepath, str) => {
     if (err) console.error(err);
   });
 }
+
+const handleTasksResponse = (tasks) => 
+  tasks.map(handleTaskResponse)
+
+const handleTaskResponse = ({ 
+  id, 
+  title, 
+  updated, 
+  notes = '', 
+  status,
+} = {}) => {
+  if (!id) return null;
+
+  return {
+    id,
+    title,
+    updated,
+    notes,
+    status
+  }
+};
